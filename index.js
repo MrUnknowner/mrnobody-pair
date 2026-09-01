@@ -1,11 +1,14 @@
 const express = require("express");
 const app = express();
 const path = require("path");
+const bodyParser = require("body-parser");
 const PORT = process.env.PORT || 8000;
-const code = require("./pair");
+let code = require("./pair");
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+require("events").EventEmitter.defaultMaxListeners = 500;
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use("/code", code);
 
@@ -14,7 +17,7 @@ app.use("/", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`⏩ Server running on port ${PORT}`);
+  console.log(`⏩ MrNobody Pair Server running on port ${PORT}`);
 });
 
 module.exports = app;
