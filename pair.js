@@ -1,7 +1,7 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const router = express.Router();
+const express = require("express");
+const fs = require("fs");
+const path = require("path");
+let router = express.Router();
 const pino = require("pino");
 const {
     default: makeWASocket,
@@ -17,7 +17,7 @@ function removeFile(FilePath) {
     fs.rmSync(FilePath, { recursive: true, force: true });
 }
 
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
     let num = req.query.number;
     if (!num) return res.status(400).json({ error: "Phone number is required" });
 
