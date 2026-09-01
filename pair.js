@@ -23,8 +23,8 @@ router.get("/", async (req, res) => {
     let num = req.query.number;
     if (!num) return res.status(400).send({ error: "Phone number is required" });
 
-    // Project එක ඇතුලෙන්ම Dynamic Unique Session Folder එකක් හදනවා (Railway Permission Issue නැති කිරීමට)
-    const sessionDir = path.join(__dirname, `./session_${Date.now()}`);
+    // Project එක ඇතුලෙම Temp Session Folder එක සෑදීම
+    const sessionDir = path.join(__dirname, "session_" + Date.now());
 
     try {
         if (!fs.existsSync(sessionDir)) {
@@ -40,16 +40,18 @@ router.get("/", async (req, res) => {
             },
             printQRInTerminal: false,
             logger: pino({ level: "fatal" }),
-            browser: Browsers.ubuntu("Chrome"),
-            syncFullHistory: false,
+            browser: Browsers.macOS("Safari"),
+            syncFullHistory: false
         });
 
         if (!MrNobodyWeb.authState.creds.registered) {
-            await delay(2000);
+            await delay(1500);
             num = num.replace(/[^0-9]/g, "");
-            const code = await MrNobodyWeb.requestPairingCode(num);
+            const rawCode = await MrNobodyWeb.requestPairingCode(num);
+            const formattedCode = rawCode?.match(/.{1,4}/g)?.join("-") || rawCode;
+            
             if (!res.headersSent) {
-                res.send({ code });
+                return res.send({ code: formattedCode });
             }
         }
 
@@ -62,24 +64,23 @@ router.get("/", async (req, res) => {
                 try {
                     await delay(5000);
                     const auth_path = path.join(sessionDir, "creds.json");
-                    if (!fs.existsSync(auth_path)) return;
+                    
+                    if (fs.existsSync(auth_path)) {
+                        const credsData = fs.readFileSync(auth_path);
+                        const string_session = "MrNobody~" + Buffer.from(credsData).toString("base64");
+                        const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
 
-                    const credsData = fs.readFileSync(auth_path);
-                    const string_session = "MrNobody~" + Buffer.from(credsData).toString("base64");
-                    const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
+                        const sid = `*MRNOBODY MD 💐*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Session ID, copy this id and paste into config.js file*`;
 
-                    const sid = `*MRNOBODY MD 💐*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Session ID, copy this id and paste into config.js file*`;
+                        await MrNobodyWeb.sendMessage(user_jid, { text: sid });
+                        await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
+                        await MrNobodyWeb.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
+                    }
 
-                    await MrNobodyWeb.sendMessage(user_jid, { text: sid });
-                    await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
-                    await MrNobodyWeb.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
-
-                    console.log("Session generated and sent successfully!");
-
-                    await delay(3000);
+                    await delay(2000);
                     removeFile(sessionDir);
                 } catch (e) {
-                    console.error("Error inside connection open:", e);
+                    console.error("Error during connection open:", e);
                     removeFile(sessionDir);
                 }
             } else if (connection === "close") {
@@ -91,7 +92,7 @@ router.get("/", async (req, res) => {
         });
 
     } catch (err) {
-        console.error("MrNobodyPair error:", err);
+        console.error("Pairing error:", err);
         removeFile(sessionDir);
         if (!res.headersSent) {
             res.status(500).send({ error: "Service Unavailable" });
