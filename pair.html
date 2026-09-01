@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MrNobody - Pair Code</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f19; color: #f1f5f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: #1e293b; padding: 40px 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.6); width: 100%; max-width: 420px; text-align: center; border: 1px solid #334155; }
+        h2 { margin-bottom: 8px; color: #38bdf8; font-size: 26px; }
+        p { color: #94a3b8; font-size: 14px; margin-bottom: 25px; }
+        .input-group { position: relative; margin-bottom: 20px; }
+        input { width: 100%; padding: 14px 16px; border: 1px solid #475569; border-radius: 8px; background: #0f172a; color: white; font-size: 16px; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input:focus { border-color: #38bdf8; box-shadow: 0 0 8px rgba(56, 189, 248, 0.3); }
+        button { width: 100%; padding: 14px; background: #0284c7; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #0369a1; }
+        #loading { display: none; margin-top: 15px; color: #fbbf24; font-weight: 500; }
+        #result { margin-top: 20px; font-size: 20px; font-weight: bold; color: #4ade80; word-break: break-all; background: #0f172a; padding: 15px; border-radius: 8px; border: 1px dashed #38bdf8; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>MrNobody MD</h2>
+        <p>Link your WhatsApp to get Session ID</p>
+        
+        <div class="input-group">
+            <input type="text" id="number" placeholder="947xxxxxxxx">
+        </div>
+        
+        <button id="submitBtn" onclick="getPairCode()">Get Pairing Code</button>
+        
+        <div id="loading">Generating code, please wait...</div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function getPairCode() {
+            const num = document.getElementById('number').value.trim();
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const btn = document.getElementById('submitBtn');
+
+            if (!num) {
+                alert('Please enter your WhatsApp number with country code!');
+                return;
+            }
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`/code?number=${num}`);
+                const data = await response.json();
+
+                loading.style.display = 'none';
+                btn.disabled = false;
+
+                if (data.code) {
+                    result.style.display = 'block';
+                    result.innerHTML = `Your Code: <span style="color: #facc15">${data.code}</span>`;
+                } else {
+                    alert('Error generating code. Try again!');
+                }
+            } catch (e) {
+                loading.style.display = 'none';
+                btn.disabled = false;
+                alert('Server connection error!');
+            }
+        }
+    </script>
+</body>
+</html>
