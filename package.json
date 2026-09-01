@@ -1,7 +1,7 @@
 {
-  "name": "mrnobody-web-pair",
+  "name": "mrnobody-pair",
   "version": "1.0.0",
-  "description": "WhatsApp Bot Web Paircode",
+  "description": "WhatsApp Web Pair Code",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
