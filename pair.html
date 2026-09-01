@@ -70,16 +70,16 @@
       <p>Enter your WhatsApp number with country code</p>
       <div class="input-container">
         <input type="text" id="number" placeholder="9477xxxxxxx">
-        <button id="submit">Get</button>
+        <button id="submit">Submit</button>
       </div>
       <div id="loading-spinner">
-        <i class="fas fa-spinner fa-spin"></i> Connecting...
+        <i class="fas fa-spinner fa-spin"></i> Generating...
       </div>
       <br>
       <main id="pair"></main>
     </div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/axios/1.0.0-alpha.1/axios.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
   <script>
     let a = document.getElementById("pair");
     let b = document.getElementById("submit");
@@ -87,7 +87,7 @@
 
     async function Copy() {
       let obj = document.getElementById("copy");
-      await navigator.clipboard.writeText(obj.innerText.replace('CODE: ', ''));
+      await navigator.clipboard.writeText(obj.dataset.code);
       obj.innerText = "✔️ COPIED";
       obj.style = "color:#3fb950;font-weight:bold";
       setTimeout(() => { 
