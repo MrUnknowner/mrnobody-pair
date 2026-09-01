@@ -10,6 +10,7 @@ const {
     makeCacheableSignalKeyStore,
     Browsers,
     jidNormalizedUser,
+    DisconnectReason
 } = require("@whiskeysockets/baileys");
 
 function removeFile(FilePath) {
@@ -23,7 +24,6 @@ router.get("/", async (req, res) => {
     let num = req.query.number;
     if (!num) return res.status(400).send({ error: "Phone number is required" });
 
-    // Temp Session Dir
     const sessionDir = path.join(__dirname, `./session_${Date.now()}`);
 
     try {
@@ -42,6 +42,9 @@ router.get("/", async (req, res) => {
             logger: pino({ level: "fatal" }),
             browser: Browsers.macOS("Safari"),
             syncFullHistory: false,
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 10000,
         });
 
         if (!MrNobodyWeb.authState.creds.registered) {
@@ -61,8 +64,12 @@ router.get("/", async (req, res) => {
             const { connection, lastDisconnect } = s;
 
             if (connection === "open") {
+                console.log("Connection opened! Sending Session ID...");
+                
+                // Connection එක Open වුණාට පසු creds ලියවෙන තෙක් තත්පර 6ක් රැඳී සිටීම
+                await delay(6000);
+                
                 try {
-                    await delay(5000);
                     const auth_path = path.join(sessionDir, "creds.json");
 
                     if (fs.existsSync(auth_path)) {
@@ -76,18 +83,22 @@ router.get("/", async (req, res) => {
                         await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
                         await MrNobodyWeb.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
 
-                        console.log("Session generated and sent successfully!");
+                        console.log("Session ID successfully generated and sent to WhatsApp!");
                     }
 
-                    await delay(2000);
+                    await delay(3000);
                     removeFile(sessionDir);
+
                 } catch (e) {
-                    console.error("Error during connection open logic:", e);
+                    console.error("Error during sending session:", e);
                     removeFile(sessionDir);
                 }
             } else if (connection === "close") {
                 let reason = lastDisconnect?.error?.output?.statusCode;
-                if (reason === 401) {
+                console.log(`Connection closed with status code: ${reason}`);
+
+                // 401 (Logged Out) නොවේ නම් පමණක් CleanUp කරන්න
+                if (reason === DisconnectReason.loggedOut || reason === 401) {
                     removeFile(sessionDir);
                 }
             }
