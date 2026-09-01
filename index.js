@@ -15,7 +15,7 @@ app.use("/", async (req, res) => {
   res.sendFile(path.join(__dirname, "pair.html"));
 });
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`⏩ Server running on port ${PORT}`);
 });
 
