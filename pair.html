@@ -3,162 +3,128 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PAIR CODE</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <title>MrNobody MD - Pairing</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
+      background: #090d16;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #e2e8f0;
+      height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      margin: 0;
-      background-color: #141414;
-      background-repeat: no-repeat;
-      background-position: center;
-      background-size: cover;
-      font-family: 'Arial', sans-serif;
-      color: #fff;
     }
-
-    .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .box {
-      width: 300px;
-      height: 330px;
-      padding: 20px;
-      position: relative;
+    .card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      width: 350px;
+      padding: 30px 25px;
+      border-radius: 16px;
       text-align: center;
-      background-color: #a20000;
-      border-radius: 10px;
-      transform: perspective(1000px) rotateY(0deg);
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     }
-
-    #text { color: #ffffff; }
-    .input-container input { color: #ffffff; }
-    .centered-text { color: #ffffff; text-align: center; }
-
-    .input-container {
+    .card h2 { color: #38bdf8; font-size: 22px; margin-bottom: 6px; }
+    .card p { color: #9ca3af; font-size: 13px; margin-bottom: 22px; }
+    .input-box {
       display: flex;
-      background: #ffffff;
-      border-radius: 1rem;
-      padding: 0.3rem;
-      gap: 0.3rem;
-      max-width: 300px;
-      width: 100%;
+      background: #1f2937;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #374151;
     }
-
-    .input-container input {
-      border-radius: 0.8rem 0 0 0.8rem;
-      background: #000000;
-      width: 89%;
-      flex-basis: 75%;
-      padding: 1rem;
+    .input-box input {
+      width: 70%;
+      padding: 12px;
       border: none;
-      border-left: 2px solid #075e54;
-      color: #ecf0f1;
-      transition: all 0.2s ease-in-out;
+      background: transparent;
+      color: #fff;
+      font-size: 15px;
+      outline: none;
     }
-
-    .input-container button {
-      flex-basis: 25%;
-      padding: 1rem;
-      background: #25d366;
-      font-weight: 900;
-      letter-spacing: 0.1rem;
-      text-transform: uppercase;
-      color: white;
+    .input-box button {
+      width: 30%;
+      background: #0284c7;
+      color: #fff;
       border: none;
-      width: 100%;
-      border-radius: 0 1rem 1rem 0;
-      transition: all 0.2s ease-in-out;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .input-box button:hover { background: #0369a1; }
+    #spinner { display: none; margin-top: 15px; color: #38bdf8; font-size: 14px; }
+    #code-area { margin-top: 20px; }
+    .code-box {
+      background: #1e293b;
+      border: 1px dashed #38bdf8;
+      padding: 12px;
+      border-radius: 8px;
       cursor: pointer;
     }
-
-    .input-container button:hover { background: #2980b9; }
-
-    #loading-spinner {
-      display: none;
-      color: white;
-      margin-top: 10px;
-    }
-
-    .fa-spinner { animation: spin 2s linear infinite; }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
+    .code-box span { font-size: 12px; color: #94a3b8; }
+    .code-box h3 { font-size: 20px; color: #facc15; margin-top: 4px; letter-spacing: 2px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="main">
-      <div class="box" id="box">
-        <div id="text">
-          <i class="fa fa-user"></i>
-          <p>
-            <h3 class="centered-text">Link MRNOBODY with phone number</h3>
-            <br>
-            <h6>🔢 Enter your number with country code.</h6>
-            <div class="input-container">
-              <input placeholder="9477xxxxxxx" type="number" id="number">
-              <button id="submit">Submit</button>
-            </div>
-            <div id="loading-spinner">
-              <i class="fas fa-spinner fa-spin"></i>
-            </div>
-            <br><br>
-            <main id="pair"></main>
-          </p>
-        </div>
-      </div>
+
+  <div class="card">
+    <h2>MrNobody MD</h2>
+    <p>Enter your WhatsApp number with country code</p>
+    
+    <div class="input-box">
+      <input type="text" id="number" placeholder="9477xxxxxxx">
+      <button id="btn">Submit</button>
     </div>
+
+    <div id="spinner"><i class="fa-solid fa-spinner fa-spin"></i> Generating...</div>
+    <div id="code-area"></div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.min.js"></script>
   <script>
-    let a = document.getElementById("pair");
-    let b = document.getElementById("submit");
-    let c = document.getElementById("number");
+    const btn = document.getElementById("btn");
+    const numInput = document.getElementById("number");
+    const spinner = document.getElementById("spinner");
+    const codeArea = document.getElementById("code-area");
 
-    async function Copy() {
-      let text = document.getElementById("copy").innerText;
-      let obj = document.getElementById("copy");
-      await navigator.clipboard.writeText(obj.innerText.replace('CODE: ', ''));
-      obj.innerText = "✔️ COPIED";
-      obj.style = "color:blue;font-weight:bold";
-      setTimeout(() => {
-        obj.innerText = text;
-        obj.style = "color:white;font-weight:bold";
-      }, 1000);
-    }
+    btn.addEventListener("click", async () => {
+      const num = numInput.value.replace(/[^0-9]/g, "");
+      if (!num || num.length < 10) {
+        codeArea.innerHTML = '<span style="color:#ef4444;font-size:13px;">❗ Enter valid phone number</span>';
+        return;
+      }
 
-    b.addEventListener("click", async (e) => {
-      e.preventDefault();
-      if (!c.value) {
-        a.innerHTML = '<a style="color:black;font-weight:bold">❗Enter your whatsapp number with country code.</a><br><br>';
-      } else if (c.value.replace(/[^0-9]/g, "").length < 10) {
-        a.innerHTML = '<a style="color:black;font-weight:bold">❗Invalid number format. Please try again.</a><br><br>';
-      } else {
-        const bc = c.value.replace(/[^0-9]/g, "");
-        c.type = "text";
-        document.getElementById("loading-spinner").style.display = "block";
-        a.innerHTML = '';
+      spinner.style.display = "block";
+      codeArea.innerHTML = "";
+
+      try {
+        const { data } = await axios(`/code?number=${num}`);
+        const code = data.code || "Error";
+        spinner.style.display = "none";
         
-        try {
-          let { data } = await axios(`/code?number=${bc}`);
-          let code = data.code || "❗ Service Unavailable";
-          a.innerHTML = '<font id="copy" onclick="Copy()" style="color:blue;font-weight:bold" size="5">CODE: <span style="color:white;font-weight:bold">' + code + '</span></font><br><br><br>';
-        } catch (err) {
-          a.innerHTML = '<a style="color:black;font-weight:bold">❗ Error generating code.</a><br><br>';
-        }
-        
-        document.getElementById("loading-spinner").style.display = "none";
+        codeArea.innerHTML = `
+          <div class="code-box" onclick="copyCode('${code}')">
+            <span>Tap to copy Pairing Code</span>
+            <h3 id="pair-code">${code}</h3>
+          </div>
+        `;
+      } catch (err) {
+        spinner.style.display = "none";
+        codeArea.innerHTML = '<span style="color:#ef4444;font-size:13px;">❗ Failed to generate code</span>';
       }
     });
+
+    async function copyCode(code) {
+      await navigator.clipboard.writeText(code);
+      const pairCodeElem = document.getElementById("pair-code");
+      pairCodeElem.innerText = "COPIED!";
+      pairCodeElem.style.color = "#4ade80";
+      setTimeout(() => {
+        pairCodeElem.innerText = code;
+        pairCodeElem.style.color = "#facc15";
+      }, 1500);
+    }
   </script>
 </body>
 </html>
