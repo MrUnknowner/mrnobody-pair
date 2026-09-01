@@ -1,23 +1,21 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const PORT = process.env.PORT || 3000;
-
+const express = require("express");
 const app = express();
+const __path = process.cwd();
+const bodyParser = require("body-parser");
+const PORT = process.env.PORT || 3000;
+let code = require("./pair");
 
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Zanta එකේ වගේම /pair ගියපු ගමන් pair.html එක පේන්න
-app.get('/pair', (req, res) => {
-    res.sendFile(path.join(__dirname, 'pair.html'));
-});
+app.use("/code", code);
 
-// Pair route එක
-const pairRouter = require('./pair');
-app.use('/code', pairRouter);
+app.use("/", async (req, res, next) => {
+  res.sendFile(__path + "/pair.html");
+});
 
 app.listen(PORT, () => {
-    console.log(`MrNobody Server running on port ${PORT}`);
+  console.log(`Server running on port ` + PORT);
 });
+
+module.exports = app;
