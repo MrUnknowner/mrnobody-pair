@@ -1,6 +1,7 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+let router = express.Router();
 const pino = require("pino");
 const {
     default: makeWASocket,
@@ -11,81 +12,101 @@ const {
     jidNormalizedUser,
 } = require("@whiskeysockets/baileys");
 
-const router = express.Router();
-
-function clearFolder(folderPath) {
-    if (fs.existsSync(folderPath)) {
-        try { fs.rmSync(folderPath, { recursive: true, force: true }); } catch (e) {}
-    }
+function removeFile(FilePath) {
+    if (!fs.existsSync(FilePath)) return false;
+    try {
+        fs.rmSync(FilePath, { recursive: true, force: true });
+    } catch (e) {}
 }
 
 router.get("/", async (req, res) => {
-    let phoneNum = req.query.number;
-    if (!phoneNum) return res.status(400).send({ error: "Phone number required" });
+    let num = req.query.number;
+    if (!num) return res.status(400).send({ error: "Number is required" });
 
-    const sessionFolder = path.join(__dirname, `../session_${Date.now()}`);
+    const sessionDir = path.join(__dirname, '../session');
+    if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true });
+    }
 
-    try {
-        const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
+    async function MrNobodyPair() {
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
-        const client = makeWASocket({
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
-            },
-            printQRInTerminal: false,
-            logger: pino({ level: "fatal" }),
-            browser: Browsers.macOS("Safari"),
-            syncFullHistory: false
-        });
+        try {
+            let MrNobodySock = makeWASocket({
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
+                },
+                printQRInTerminal: false,
+                logger: pino({ level: "fatal" }),
+                browser: Browsers.macOS("Safari"),
+                syncFullHistory: false
+            });
 
-        if (!client.authState.creds.registered) {
-            await delay(1500);
-            phoneNum = phoneNum.replace(/[^0-9]/g, "");
-            const code = await client.requestPairingCode(phoneNum);
-            
-            if (!res.headersSent) {
-                return res.send({ code: code?.match(/.{1,4}/g)?.join("-") || code });
-            }
-        }
-
-        client.ev.on("creds.update", saveCreds);
-
-        client.ev.on("connection.update", async (update) => {
-            const { connection } = update;
-
-            if (connection === "open") {
-                try {
-                    await delay(4000);
-                    const authPath = path.join(sessionFolder, "creds.json");
-
-                    if (fs.existsSync(authPath)) {
-                        const credsData = fs.readFileSync(authPath);
-                        const sessionID = "MrNobody~" + Buffer.from(credsData).toString("base64");
-                        const userJid = jidNormalizedUser(client.user.id);
-
-                        const msg = `*🖤 MRNOBODY MD SESSION CONNECTED 🖤*\n\n\`\`\`${sessionID}\`\`\`\n\n> Keep this ID safe!`;
-
-                        await client.sendMessage(userJid, { text: msg });
-                        await client.sendMessage(userJid, { text: sessionID });
-                    }
-
-                    await delay(2000);
-                    clearFolder(sessionFolder);
-                } catch (err) {
-                    clearFolder(sessionFolder);
+            if (!MrNobodySock.authState.creds.registered) {
+                await delay(1500);
+                num = num.replace(/[^0-9]/g, "");
+                const rawCode = await MrNobodySock.requestPairingCode(num);
+                const code = rawCode?.match(/.{1,4}/g)?.join("-") || rawCode;
+                
+                if (!res.headersSent) {
+                    await res.send({ code });
                 }
-            } else if (connection === "close") {
-                clearFolder(sessionFolder);
             }
-        });
 
-    } catch (error) {
-        clearFolder(sessionFolder);
-        if (!res.headersSent) {
-            res.status(500).send({ error: "Service Unavailable" });
+            MrNobodySock.ev.on("creds.update", saveCreds);
+
+            MrNobodySock.ev.on("connection.update", async (s) => {
+                const { connection, lastDisconnect } = s;
+
+                if (connection === "open") {
+                    try {
+                        await delay(5000);
+                        const auth_path = path.join(sessionDir, "creds.json");
+                        
+                        if (fs.existsSync(auth_path)) {
+                            const credsData = fs.readFileSync(auth_path);
+                            const string_session = "MrNobody~" + Buffer.from(credsData).toString("base64");
+                            const user_jid = jidNormalizedUser(MrNobodySock.user.id);
+
+                            const sid = `*MRNOBODY MD 💐*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Session ID, copy this id and paste into config.js file*`;
+                            
+                            await MrNobodySock.sendMessage(user_jid, { text: sid });
+                            await MrNobodySock.sendMessage(user_jid, { text: string_session });
+                            await MrNobodySock.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
+
+                            console.log("Session uploaded and sent successfully!");
+                        }
+
+                        await delay(2000);
+                        removeFile(sessionDir);
+
+                    } catch (e) {
+                        console.error("Error during connection open logic:", e);
+                        removeFile(sessionDir);
+                    }
+                } 
+                else if (connection === "close") {
+                    let reason = lastDisconnect?.error?.output?.statusCode;
+                    if (reason !== 401) {
+                        await delay(5000);
+                        MrNobodyPair();
+                    } else {
+                        removeFile(sessionDir);
+                    }
+                }
+            });
+
+        } catch (err) {
+            console.error("Pairing error:", err);
+            removeFile(sessionDir);
+            if (!res.headersSent) {
+                res.status(500).send({ error: "Service Unavailable" });
+            }
         }
     }
+
+    return await MrNobodyPair();
 });
 
 module.exports = router;
