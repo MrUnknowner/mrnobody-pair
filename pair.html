@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MRNOBODY PAIR CODE</title>
+  <title>PAIR CODE</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <style>
     body {
@@ -13,25 +13,35 @@
       height: 100vh;
       margin: 0;
       background-color: #141414;
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: cover;
       font-family: 'Arial', sans-serif;
       color: #fff;
     }
+
     .container {
       display: flex;
       flex-direction: column;
       align-items: center;
     }
+
     .box {
       width: 300px;
       height: 330px;
       padding: 20px;
+      position: relative;
       text-align: center;
       background-color: #a20000;
       border-radius: 10px;
+      transform: perspective(1000px) rotateY(0deg);
       box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
     }
+
     #text { color: #ffffff; }
-    .centered-text { text-align: center; color: #ffffff; }
+    .input-container input { color: #ffffff; }
+    .centered-text { color: #ffffff; text-align: center; }
+
     .input-container {
       display: flex;
       background: #ffffff;
@@ -41,6 +51,7 @@
       max-width: 300px;
       width: 100%;
     }
+
     .input-container input {
       border-radius: 0.8rem 0 0 0.8rem;
       background: #000000;
@@ -50,25 +61,32 @@
       border: none;
       border-left: 2px solid #075e54;
       color: #ecf0f1;
+      transition: all 0.2s ease-in-out;
     }
+
     .input-container button {
       flex-basis: 25%;
       padding: 1rem;
       background: #25d366;
       font-weight: 900;
+      letter-spacing: 0.1rem;
       text-transform: uppercase;
       color: white;
       border: none;
       width: 100%;
       border-radius: 0 1rem 1rem 0;
+      transition: all 0.2s ease-in-out;
       cursor: pointer;
     }
+
     .input-container button:hover { background: #2980b9; }
+
     #loading-spinner {
       display: none;
       color: white;
       margin-top: 10px;
     }
+
     .fa-spinner { animation: spin 2s linear infinite; }
     @keyframes spin {
       0% { transform: rotate(0deg); }
@@ -87,7 +105,7 @@
             <br>
             <h6>🔢 Enter your number with country code.</h6>
             <div class="input-container">
-              <input placeholder="9477xxxxxxx" type="text" id="number">
+              <input placeholder="9477xxxxxxx" type="number" id="number">
               <button id="submit">Submit</button>
             </div>
             <div id="loading-spinner">
@@ -107,12 +125,13 @@
     let c = document.getElementById("number");
 
     async function Copy() {
+      let text = document.getElementById("copy").innerText;
       let obj = document.getElementById("copy");
       await navigator.clipboard.writeText(obj.innerText.replace('CODE: ', ''));
       obj.innerText = "✔️ COPIED";
       obj.style = "color:blue;font-weight:bold";
       setTimeout(() => {
-        obj.innerText = "CODE: " + obj.dataset.code;
+        obj.innerText = text;
         obj.style = "color:white;font-weight:bold";
       }, 1000);
     }
@@ -121,27 +140,24 @@
       e.preventDefault();
       if (!c.value) {
         a.innerHTML = '<a style="color:black;font-weight:bold">❗Enter your whatsapp number with country code.</a><br><br>';
-        return;
+      } else if (c.value.replace(/[^0-9]/g, "").length < 10) {
+        a.innerHTML = '<a style="color:black;font-weight:bold">❗Invalid number format. Please try again.</a><br><br>';
+      } else {
+        const bc = c.value.replace(/[^0-9]/g, "");
+        c.type = "text";
+        document.getElementById("loading-spinner").style.display = "block";
+        a.innerHTML = '';
+        
+        try {
+          let { data } = await axios(`/code?number=${bc}`);
+          let code = data.code || "❗ Service Unavailable";
+          a.innerHTML = '<font id="copy" onclick="Copy()" style="color:blue;font-weight:bold" size="5">CODE: <span style="color:white;font-weight:bold">' + code + '</span></font><br><br><br>';
+        } catch (err) {
+          a.innerHTML = '<a style="color:black;font-weight:bold">❗ Error generating code.</a><br><br>';
+        }
+        
+        document.getElementById("loading-spinner").style.display = "none";
       }
-      
-      const bc = c.value.replace(/[^0-9]/g, "");
-      if (bc.length < 10) {
-        a.innerHTML = '<a style="color:black;font-weight:bold">❗Invalid number format.</a><br><br>';
-        return;
-      }
-
-      document.getElementById("loading-spinner").style.display = "block";
-      a.innerHTML = '';
-      
-      try {
-        let { data } = await axios(`/code?number=${bc}`);
-        let code = data.code || "❗ Service Unavailable";
-        a.innerHTML = '<font id="copy" data-code="' + code + '" onclick="Copy()" style="color:blue;font-weight:bold;cursor:pointer" size="5">CODE: <span style="color:white;font-weight:bold">' + code + '</span></font><br><br><br>';
-      } catch (err) {
-        a.innerHTML = '<a style="color:black;font-weight:bold">❗ Error generating code.</a><br><br>';
-      }
-      
-      document.getElementById("loading-spinner").style.display = "none";
     });
   </script>
 </body>
