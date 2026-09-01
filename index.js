@@ -1,20 +1,20 @@
 const express = require("express");
 const app = express();
-__path = process.cwd();
-const bodyParser = require("body-parser");
+const path = require("path");
 const PORT = process.env.PORT || 8000;
-let code = require("./pair");
-require("events").EventEmitter.defaultMaxListeners = 500;
-app.use("/code", code);
+const pairRoute = require("./pair");
 
-app.use("/", async (req, res, next) => {
-  res.sendFile(__path + "/pair.html");
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.use("/code", pairRoute);
+
+app.use("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "pair.html"));
 });
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 app.listen(PORT, () => {
-  console.log(`⏩ Server running on http://localhost:` + PORT);
+  console.log(`🚀 MrNobody Pair Server running on port ${PORT}`);
 });
 
 module.exports = app;
