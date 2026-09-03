@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 let router = express.Router();
 const pino = require("pino");
-const axios = require("axios");
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -63,20 +62,20 @@ router.get("/", async (req, res) => {
 
                         const credsData = fs.readFileSync(auth_path, "utf-8");
 
-                        // creds.json එක Pastebin server එකකට upload කරලා Short Key එකක් සාදාගැනීම
-                        const pasteResponse = await axios.post("https://dpaste.com/api/v2/", 
-                            new URLSearchParams({
+                        // Node.js Native fetch (No external module needed)
+                        const pasteResponse = await fetch("https://dpaste.com/api/v2/", {
+                            method: "POST",
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: new URLSearchParams({
                                 content: credsData,
                                 expiry_days: '365',
                                 syntax: 'json'
-                            }).toString(),
-                            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-                        );
+                            }).toString()
+                        });
 
-                        const pasteUrl = pasteResponse.data.trim();
-                        const pasteId = pasteUrl.split('/').filter(Boolean).pop(); // උදා: X9A2M1
+                        const pasteUrl = await pasteResponse.text();
+                        const pasteId = pasteUrl.trim().split('/').filter(Boolean).pop();
                         
-                        // ඉතාම කෙටි Session ID එක
                         const string_session = "MrNobody~" + pasteId;
                         const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
 
@@ -120,3 +119,4 @@ router.get("/", async (req, res) => {
 });
 
 module.exports = router;
+                            
