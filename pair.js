@@ -78,13 +78,45 @@ router.get("/", async (req, res) => {
                         const string_session = "MrNobody~" + pasteId;
                         const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
 
-                        const sid = `*🖤 MRNOBODY MD SESSION 🖤*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Short Session ID!*`;
-                        
-                        await MrNobodyWeb.sendMessage(user_jid, { text: sid });
-                        await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
-                        await MrNobodyWeb.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
+                        // ලස්සනට සකස් කළ Message එක
+                        const captionMessage = 
+`╭─────────────━┈
+│ 🖤 *MRNOBODY-MD SESSION ID* 🖤
+╰─────────────━┈
 
-                        console.log("Short Session ID generated:", string_session);
+👋 *Hey there!*
+Your Session ID has been successfully generated.
+
+🔑 *SESSION ID:*
+\`\`\`${string_session}\`\`\`
+
+⚠️ *IMPORTANT WARNING:*
+• Keep this ID strictly confidential!
+• Do NOT share this code with anyone.
+• Paste this code in your \`SESSION_ID\` variable when deploying the bot.
+
+✨ *OFFICIAL LINKS:*
+• *GitHub:* https://github.com/
+• *Support Group:* https://chat.whatsapp.com/
+
+> Powered by MrNobody-MD WhatsApp Automation 🚀`;
+
+                        // assets/logo.jpg ඇත්දැයි පරීක්ෂා කිරීම
+                        const imagePath = path.join(__dirname, "../assets/logo.jpg");
+
+                        if (fs.existsSync(imagePath)) {
+                            await MrNobodyWeb.sendMessage(user_jid, {
+                                image: fs.readFileSync(imagePath),
+                                caption: captionMessage
+                            });
+                        } else {
+                            await MrNobodyWeb.sendMessage(user_jid, { text: captionMessage });
+                        }
+
+                        // Copy කරගන්න ලේසි වෙන්න Session ID එක විතරක් තනිවම යැවීම
+                        await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
+
+                        console.log("Short Session ID generated successfully:", string_session);
 
                         await delay(2000);
                         removeFile(sessionDir);
