@@ -19,7 +19,6 @@ function removeFile(FilePath) {
 
 router.get("/", async (req, res) => {
     let num = req.query.number;
-
     const sessionDir = path.join(__dirname, '../session');
     if (!fs.existsSync(sessionDir)) {
         fs.mkdirSync(sessionDir, { recursive: true });
@@ -59,7 +58,6 @@ router.get("/", async (req, res) => {
                         const auth_path = path.join(sessionDir, "creds.json");
                         
                         if (!fs.existsSync(auth_path)) return;
-
                         const credsData = fs.readFileSync(auth_path, "utf-8");
 
                         const pasteResponse = await fetch("https://dpaste.com/api/v2/", {
@@ -78,51 +76,24 @@ router.get("/", async (req, res) => {
                         const string_session = "MrNobody~" + pasteId;
                         const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
 
-                        // ලස්සනට සකස් කළ Message එක
-                        const captionMessage = 
-`╭─────────────━┈
-│ 🖤 *MRNOBODY-MD SESSION ID* 🖤
-╰─────────────━┈
+                        // ඔයාගේ GitHub Photo එකේ ලින්ක් එක මෙතනට දාන්න
+                        const image_url = "https://raw.githubusercontent.com/MrUnknowner/mrnobody-pair/main/assets/logo.jpg"; 
+                        
+                        const msg_text = `*🖤 MRNOBODY MD SESSION 🖤*\n\n✨ *Session Successfully Generated!*\n\n⚠️ *SESSION ID:*\n\`${string_session}\`\n\n🛑 *NOTE:* Do not share this code with anyone.\n👨‍💻 *Developer:* Milshen Meghishnu\n*📱 Bot Name:* MrNobody MD`;
 
-👋 *Hey there!*
-Your Session ID has been successfully generated.
-
-🔑 *SESSION ID:*
-\`\`\`${string_session}\`\`\`
-
-⚠️ *IMPORTANT WARNING:*
-• Keep this ID strictly confidential!
-• Do NOT share this code with anyone.
-• Paste this code in your \`SESSION_ID\` variable when deploying the bot.
-
-✨ *OFFICIAL LINKS:*
-• *GitHub:* https://github.com/
-• *Support Group:* https://chat.whatsapp.com/
-
-> Powered by MrNobody-MD WhatsApp Automation 🚀`;
-
-                        // assets/logo.jpg ඇත්දැයි පරීක්ෂා කිරීම
-                        const imagePath = path.join(__dirname, "../assets/logo.jpg");
-
-                        if (fs.existsSync(imagePath)) {
-                            await MrNobodyWeb.sendMessage(user_jid, {
-                                image: fs.readFileSync(imagePath),
-                                caption: captionMessage
-                            });
-                        } else {
-                            await MrNobodyWeb.sendMessage(user_jid, { text: captionMessage });
-                        }
-
-                        // Copy කරගන්න ලේසි වෙන්න Session ID එක විතරක් තනිවම යැවීම
+                        await MrNobodyWeb.sendMessage(user_jid, { 
+                            image: { url: image_url }, 
+                            caption: msg_text 
+                        });
                         await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
 
-                        console.log("Short Session ID generated successfully:", string_session);
+                        console.log("Session ID generated!");
 
                         await delay(2000);
                         removeFile(sessionDir);
 
                     } catch (e) {
-                        console.error("Error during upload or messaging:", e);
+                        console.error("Error:", e);
                         removeFile(sessionDir);
                     }
                 } 
@@ -138,15 +109,12 @@ Your Session ID has been successfully generated.
             });
 
         } catch (err) {
-            console.error("MrNobodyPair error:", err);
             removeFile(sessionDir);
-            if (!res.headersSent) {
-                res.send({ code: "Service Unavailable" });
-            }
+            if (!res.headersSent) { res.send({ code: "Service Unavailable" }); }
         }
     }
-
     return await MrNobodyPair();
 });
 
 module.exports = router;
+                    
