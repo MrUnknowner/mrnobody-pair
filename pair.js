@@ -62,7 +62,6 @@ router.get("/", async (req, res) => {
 
                         const credsData = fs.readFileSync(auth_path, "utf-8");
 
-                        // Node.js Native fetch (No external module needed)
                         const pasteResponse = await fetch("https://dpaste.com/api/v2/", {
                             method: "POST",
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -119,4 +118,3 @@ router.get("/", async (req, res) => {
 });
 
 module.exports = router;
-                            
