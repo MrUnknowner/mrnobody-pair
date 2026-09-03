@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 let router = express.Router();
 const pino = require("pino");
+const axios = require("axios");
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -12,7 +13,6 @@ const {
     jidNormalizedUser,
 } = require("@whiskeysockets/baileys");
 
-// ෆයිල් සහ ෆෝල්ඩර් ඉවත් කිරීමේ function එක
 function removeFile(FilePath) {
     if (!fs.existsSync(FilePath)) return false;
     try { fs.rmSync(FilePath, { recursive: true, force: true }); } catch (e) {}
@@ -26,7 +26,6 @@ router.get("/", async (req, res) => {
         fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    // RobinPair වෙනුවට ඔයාගේ MrNobodyPair නම
     async function MrNobodyPair() {
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
@@ -62,31 +61,46 @@ router.get("/", async (req, res) => {
                         
                         if (!fs.existsSync(auth_path)) return;
 
-                        // ෆයිල් එකේ Spaces අයින් කරලා Session ID එක හැකි උපරිමයෙන් කොට කිරීම
-                        const credsData = JSON.parse(fs.readFileSync(auth_path, "utf-8"));
-                        const string_session = "MrNobody~" + Buffer.from(JSON.stringify(credsData)).toString("base64");
+                        const credsData = fs.readFileSync(auth_path, "utf-8");
+
+                        // creds.json එක Pastebin server එකකට upload කරලා Short Key එකක් සාදාගැනීම
+                        const pasteResponse = await axios.post("https://dpaste.com/api/v2/", 
+                            new URLSearchParams({
+                                content: credsData,
+                                expiry_days: '365',
+                                syntax: 'json'
+                            }).toString(),
+                            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+                        );
+
+                        const pasteUrl = pasteResponse.data.trim();
+                        const pasteId = pasteUrl.split('/').filter(Boolean).pop(); // උදා: X9A2M1
+                        
+                        // ඉතාම කෙටි Session ID එක
+                        const string_session = "MrNobody~" + pasteId;
                         const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
 
-                        const sid = `*🖤 MRNOBODY MD SESSION 🖤*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Session ID, copy this id and paste into config.js file*`;
+                        const sid = `*🖤 MRNOBODY MD SESSION 🖤*\n\n⚠️ ${string_session} ⚠️\n\n*This is your Short Session ID!*`;
                         
                         await MrNobodyWeb.sendMessage(user_jid, { text: sid });
                         await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
                         await MrNobodyWeb.sendMessage(user_jid, { text: `🛑 *Do not share this code with anyone* 🛑` });
 
-                        console.log("MrNobody Session generated successfully!");
+                        console.log("Short Session ID generated:", string_session);
 
                         await delay(2000);
                         removeFile(sessionDir);
 
                     } catch (e) {
-                        console.error("Error during connection open logic:", e);
+                        console.error("Error during upload or messaging:", e);
+                        removeFile(sessionDir);
                     }
                 } 
                 else if (connection === "close") {
                     let reason = lastDisconnect?.error?.output?.statusCode;
                     if (reason !== 401) {
                         await delay(5000);
-                        MrNobodyPair(); // Disconnect වුණොත් ආයෙත් Auto-Reconnect වෙනවා
+                        MrNobodyPair();
                     } else {
                         removeFile(sessionDir);
                     }
