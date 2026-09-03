@@ -1,13 +1,14 @@
 {
   "name": "mrnobody-web-pair",
   "version": "1.0.0",
-  "description": "WhatsApp Bot Web Paircode",
+  "description": "A multi functional whatsapp bot Web paircode.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.8",
+    "axios": "^1.7.0",
     "express": "^5.2.1",
     "pino": "^10.1.0"
   }
