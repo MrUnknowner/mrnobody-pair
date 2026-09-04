@@ -14,6 +14,10 @@ const {
     DisconnectReason
 } = require("@whiskeysockets/baileys");
 
+const {
+    saveSession
+} = require("./session-store");
+
 const router = express.Router();
 
 function removeFile(filePath) {
@@ -25,7 +29,10 @@ function removeFile(filePath) {
             force: true
         });
     } catch (error) {
-        console.error("Remove error:", error.message);
+        console.error(
+            "Remove error:",
+            error.message
+        );
     }
 }
 
@@ -42,7 +49,10 @@ router.get("/", async (req, res) => {
         });
     }
 
-    number = String(number).replace(/[^0-9]/g, "");
+    number = String(number).replace(
+        /[^0-9]/g,
+        ""
+    );
 
     if (number.length < 8) {
         return res.status(400).send({
@@ -50,10 +60,12 @@ router.get("/", async (req, res) => {
         });
     }
 
-    const sessionId = crypto.randomBytes(12).toString("hex");
+    const temporarySessionId =
+        crypto.randomBytes(12).toString("hex");
+
     const sessionDir = path.join(
         __dirname,
-        `../session_${sessionId}`
+        `../session_${temporarySessionId}`
     );
 
     fs.mkdirSync(sessionDir, {
@@ -63,29 +75,44 @@ router.get("/", async (req, res) => {
     let socket;
 
     try {
-        const { state, saveCreds } =
-            await useMultiFileAuthState(sessionDir);
+        const {
+            state,
+            saveCreds
+        } = await useMultiFileAuthState(
+            sessionDir
+        );
 
         socket = makeWASocket({
             auth: {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(
                     state.keys,
-                    pino({ level: "fatal" })
+                    pino({
+                        level: "fatal"
+                    })
                 )
             },
-            logger: pino({ level: "fatal" }),
+            logger: pino({
+                level: "fatal"
+            }),
             printQRInTerminal: false,
-            browser: Browsers.macOS("Safari")
+            browser: Browsers.macOS(
+                "Safari"
+            )
         });
 
-        socket.ev.on("creds.update", saveCreds);
+        socket.ev.on(
+            "creds.update",
+            saveCreds
+        );
 
-        if (!socket.authState.creds.registered) {
+        if (!state.creds.registered) {
             await delay(1500);
 
             const code =
-                await socket.requestPairingCode(number);
+                await socket.requestPairingCode(
+                    number
+                );
 
             if (!res.headersSent) {
                 res.send({
@@ -102,48 +129,80 @@ router.get("/", async (req, res) => {
                     lastDisconnect
                 } = update;
 
-                if (connection === "open") {
+                if (
+                    connection === "open"
+                ) {
                     try {
                         /*
-                         * IMPORTANT:
-                         * Wait for the auth state to finish saving.
+                         * Give Baileys time to finish
+                         * writing the auth state.
                          */
                         await delay(5000);
 
                         /*
-                         * We keep the COMPLETE auth directory:
-                         *
-                         * creds.json
-                         * + signal key files
-                         * + other Baileys auth files
+                         * Confirm that the COMPLETE
+                         * auth directory exists.
                          */
                         const files =
-                            fs.readdirSync(sessionDir);
+                            fs.readdirSync(
+                                sessionDir
+                            );
 
-                        if (!files.length) {
+                        if (
+                            !files.length
+                        ) {
                             throw new Error(
                                 "Session files were not created"
                             );
                         }
 
                         /*
-                         * For now we only confirm that the
-                         * complete session state exists.
-                         *
-                         * The next step will package/store this
-                         * directory securely for mrnobody-bot.
+                         * Generate the public
+                         * MrNobody session ID.
                          */
                         const generatedSession =
                             createSessionId();
 
+                        /*
+                         * Store the COMPLETE
+                         * Baileys auth directory.
+                         *
+                         * This includes:
+                         * - creds.json
+                         * - signal keys
+                         * - app-state keys
+                         * - other auth files
+                         */
+                        const storedPath =
+                            saveSession(
+                                generatedSession,
+                                sessionDir
+                            );
+
+                        if (
+                            !storedPath ||
+                            !fs.existsSync(
+                                storedPath
+                            )
+                        ) {
+                            throw new Error(
+                                "Failed to store session"
+                            );
+                        }
+
                         console.log(
-                            "Full session state created:",
+                            "Full session state stored:",
                             generatedSession
                         );
 
                         /*
-                         * Send temporary confirmation.
+                         * The temporary directory
+                         * is no longer needed.
                          */
+                        removeFile(
+                            sessionDir
+                        );
+
                         const userJid =
                             jidNormalizedUser(
                                 socket.user.id
@@ -178,7 +237,8 @@ router.get("/", async (req, res) => {
                         await socket.sendMessage(
                             userJid,
                             {
-                                text: generatedSession
+                                text:
+                                    generatedSession
                             }
                         );
 
@@ -186,23 +246,25 @@ router.get("/", async (req, res) => {
                             "Session generated successfully."
                         );
 
-                        /*
-                         * DO NOT delete the session yet.
-                         *
-                         * mrnobody-bot still needs the
-                         * complete auth state.
-                         */
                     } catch (error) {
                         console.error(
                             "Session generation error:",
                             error
                         );
+
+                        removeFile(
+                            sessionDir
+                        );
                     }
                 }
 
-                if (connection === "close") {
+                if (
+                    connection === "close"
+                ) {
                     const reason =
-                        lastDisconnect?.error?.output
+                        lastDisconnect
+                            ?.error
+                            ?.output
                             ?.statusCode;
 
                     if (
@@ -213,7 +275,9 @@ router.get("/", async (req, res) => {
                             "WhatsApp session logged out."
                         );
 
-                        removeFile(sessionDir);
+                        removeFile(
+                            sessionDir
+                        );
                     } else {
                         console.log(
                             "Connection closed:",
@@ -230,11 +294,14 @@ router.get("/", async (req, res) => {
             error
         );
 
-        removeFile(sessionDir);
+        removeFile(
+            sessionDir
+        );
 
         if (!res.headersSent) {
             res.status(503).send({
-                error: "Service Unavailable"
+                error:
+                    "Service Unavailable"
             });
         }
     }
