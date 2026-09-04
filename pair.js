@@ -21,7 +21,9 @@ const {
 const router = express.Router();
 
 function removeFile(filePath) {
-    if (!fs.existsSync(filePath)) return;
+    if (!fs.existsSync(filePath)) {
+        return;
+    }
 
     try {
         fs.rmSync(filePath, {
@@ -49,6 +51,10 @@ router.get("/", async (req, res) => {
         });
     }
 
+    /*
+     * WhatsApp pairing requires digits only
+     * with country code.
+     */
     number = String(number).replace(
         /[^0-9]/g,
         ""
@@ -72,7 +78,9 @@ router.get("/", async (req, res) => {
         recursive: true
     });
 
-    let socket;
+    let socket = null;
+    let pairingRequested = false;
+    let sessionSaved = false;
 
     try {
         const {
@@ -85,42 +93,41 @@ router.get("/", async (req, res) => {
         socket = makeWASocket({
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(
-                    state.keys,
-                    pino({
-                        level: "fatal"
-                    })
-                )
+
+                keys:
+                    makeCacheableSignalKeyStore(
+                        state.keys,
+                        pino({
+                            level: "fatal"
+                        })
+                    )
             },
+
             logger: pino({
                 level: "fatal"
             }),
+
             printQRInTerminal: false,
-            browser: Browsers.macOS(
-                "Safari"
-            )
+
+            browser:
+                Browsers.macOS("Safari")
         });
 
+        /*
+         * ALWAYS save credential updates.
+         */
         socket.ev.on(
             "creds.update",
             saveCreds
         );
 
-        if (!state.creds.registered) {
-            await delay(1500);
-
-            const code =
-                await socket.requestPairingCode(
-                    number
-                );
-
-            if (!res.headersSent) {
-                res.send({
-                    code
-                });
-            }
-        }
-
+        /*
+         * Connection lifecycle.
+         *
+         * IMPORTANT:
+         * The listener is registered BEFORE
+         * requesting the pairing code.
+         */
         socket.ev.on(
             "connection.update",
             async (update) => {
@@ -129,49 +136,114 @@ router.get("/", async (req, res) => {
                     lastDisconnect
                 } = update;
 
+                /*
+                 * Request pairing code when the
+                 * WhatsApp socket starts connecting.
+                 */
                 if (
-                    connection === "open"
+                    connection === "connecting" &&
+                    !state.creds.registered &&
+                    !pairingRequested
                 ) {
+                    pairingRequested = true;
+
                     try {
                         /*
-                         * Give Baileys time to finish
-                         * writing the auth state.
+                         * Small delay gives the socket
+                         * time to initialize.
+                         */
+                        await delay(1500);
+
+                        const code =
+                            await socket.requestPairingCode(
+                                number
+                            );
+
+                        console.log(
+                            "🔗 Pairing code generated:",
+                            code
+                        );
+
+                        if (!res.headersSent) {
+                            res.send({
+                                code
+                            });
+                        }
+
+                    } catch (error) {
+                        console.error(
+                            "❌ Pairing code error:",
+                            error
+                        );
+
+                        if (!res.headersSent) {
+                            res.status(503).send({
+                                error:
+                                    "Failed to generate pairing code"
+                            });
+                        }
+
+                        removeFile(
+                            sessionDir
+                        );
+                    }
+                }
+
+                /*
+                 * WhatsApp login completed.
+                 */
+                if (
+                    connection === "open" &&
+                    !sessionSaved
+                ) {
+                    sessionSaved = true;
+
+                    try {
+                        console.log(
+                            "✅ WhatsApp pairing successful."
+                        );
+
+                        /*
+                         * Wait for the latest auth
+                         * files to be written.
                          */
                         await delay(5000);
 
                         /*
-                         * Confirm that the COMPLETE
-                         * auth directory exists.
+                         * Save the latest credentials.
+                         */
+                        await saveCreds();
+
+                        /*
+                         * Verify that Baileys created
+                         * the complete auth state.
                          */
                         const files =
                             fs.readdirSync(
                                 sessionDir
                             );
 
-                        if (
-                            !files.length
-                        ) {
+                        if (!files.length) {
                             throw new Error(
                                 "Session files were not created"
                             );
                         }
 
+                        console.log(
+                            "📁 Auth files:",
+                            files.length
+                        );
+
                         /*
-                         * Generate the public
-                         * MrNobody session ID.
+                         * Create public Session ID.
                          */
                         const generatedSession =
                             createSessionId();
 
                         /*
-                         * Store the COMPLETE
-                         * Baileys auth directory.
-                         *
-                         * This includes:
-                         * - creds.json
-                         * - signal keys
-                         * - app-state keys
-                         * - other auth files
+                         * IMPORTANT:
+                         * Store the COMPLETE Baileys
+                         * auth directory.
                          */
                         const storedPath =
                             saveSession(
@@ -191,18 +263,14 @@ router.get("/", async (req, res) => {
                         }
 
                         console.log(
-                            "Full session state stored:",
+                            "✅ Full session state stored:",
                             generatedSession
                         );
 
                         /*
-                         * The temporary directory
-                         * is no longer needed.
+                         * Send Session ID while the
+                         * temporary socket is still alive.
                          */
-                        removeFile(
-                            sessionDir
-                        );
-
                         const userJid =
                             jidNormalizedUser(
                                 socket.user.id
@@ -243,12 +311,46 @@ router.get("/", async (req, res) => {
                         );
 
                         console.log(
-                            "Session generated successfully."
+                            "✅ Session ID sent successfully."
+                        );
+
+                        /*
+                         * Close the temporary socket
+                         * AFTER the session has been
+                         * copied and messages sent.
+                         */
+                        try {
+                            socket.end(
+                                new Error(
+                                    "Temporary pairing session completed"
+                                )
+                            );
+                        } catch (error) {
+                            console.error(
+                                "Socket close error:",
+                                error.message
+                            );
+                        }
+
+                        /*
+                         * Only now remove the temporary
+                         * auth directory.
+                         */
+                        await delay(1000);
+
+                        removeFile(
+                            sessionDir
+                        );
+
+                        console.log(
+                            "🗑️ Temporary session removed."
                         );
 
                     } catch (error) {
+                        sessionSaved = false;
+
                         console.error(
-                            "Session generation error:",
+                            "❌ Session generation error:",
                             error
                         );
 
@@ -258,6 +360,9 @@ router.get("/", async (req, res) => {
                     }
                 }
 
+                /*
+                 * Connection closed.
+                 */
                 if (
                     connection === "close"
                 ) {
@@ -267,30 +372,56 @@ router.get("/", async (req, res) => {
                             ?.output
                             ?.statusCode;
 
+                    console.log(
+                        "⚠️ WhatsApp connection closed:",
+                        reason
+                    );
+
+                    /*
+                     * If session was successfully
+                     * stored, don't reconnect.
+                     */
+                    if (sessionSaved) {
+                        console.log(
+                            "✅ Session already stored."
+                        );
+
+                        return;
+                    }
+
+                    /*
+                     * Logged out / invalid session.
+                     */
                     if (
                         reason ===
                         DisconnectReason.loggedOut
                     ) {
                         console.log(
-                            "WhatsApp session logged out."
+                            "❌ WhatsApp session logged out."
                         );
 
                         removeFile(
                             sessionDir
                         );
-                    } else {
-                        console.log(
-                            "Connection closed:",
-                            reason
-                        );
+
+                        return;
                     }
+
+                    /*
+                     * Don't delete the auth folder
+                     * during a temporary connection
+                     * failure.
+                     */
+                    console.log(
+                        "⚠️ Temporary connection failure."
+                    );
                 }
             }
         );
 
     } catch (error) {
         console.error(
-            "Pairing error:",
+            "❌ Pairing startup error:",
             error
         );
 
