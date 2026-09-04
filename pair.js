@@ -1,8 +1,9 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-let router = express.Router();
+const crypto = require("crypto");
 const pino = require("pino");
+
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -10,111 +11,233 @@ const {
     makeCacheableSignalKeyStore,
     Browsers,
     jidNormalizedUser,
+    DisconnectReason
 } = require("@whiskeysockets/baileys");
 
-function removeFile(FilePath) {
-    if (!fs.existsSync(FilePath)) return false;
-    try { fs.rmSync(FilePath, { recursive: true, force: true }); } catch (e) {}
+const router = express.Router();
+
+function removeFile(filePath) {
+    if (!fs.existsSync(filePath)) return;
+
+    try {
+        fs.rmSync(filePath, {
+            recursive: true,
+            force: true
+        });
+    } catch (error) {
+        console.error("Remove error:", error.message);
+    }
+}
+
+function createSessionId() {
+    return `MrNobody~${crypto.randomBytes(18).toString("base64url")}`;
 }
 
 router.get("/", async (req, res) => {
-    let num = req.query.number;
-    const sessionDir = path.join(__dirname, '../session');
-    if (!fs.existsSync(sessionDir)) {
-        fs.mkdirSync(sessionDir, { recursive: true });
+    let number = req.query.number;
+
+    if (!number) {
+        return res.status(400).send({
+            error: "Phone number is required"
+        });
     }
 
-    async function MrNobodyPair() {
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    number = String(number).replace(/[^0-9]/g, "");
 
-        try {
-            let MrNobodyWeb = makeWASocket({
-                auth: {
-                    creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
-                },
-                printQRInTerminal: false,
-                logger: pino({ level: "fatal" }),
-                browser: Browsers.macOS("Safari"),
-            });
+    if (number.length < 8) {
+        return res.status(400).send({
+            error: "Invalid phone number"
+        });
+    }
 
-            if (!MrNobodyWeb.authState.creds.registered) {
-                await delay(1500);
-                num = num.replace(/[^0-9]/g, "");
-                const code = await MrNobodyWeb.requestPairingCode(num);
-                if (!res.headersSent) {
-                    await res.send({ code });
-                }
+    const sessionId = crypto.randomBytes(12).toString("hex");
+    const sessionDir = path.join(
+        __dirname,
+        `../session_${sessionId}`
+    );
+
+    fs.mkdirSync(sessionDir, {
+        recursive: true
+    });
+
+    let socket;
+
+    try {
+        const { state, saveCreds } =
+            await useMultiFileAuthState(sessionDir);
+
+        socket = makeWASocket({
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(
+                    state.keys,
+                    pino({ level: "fatal" })
+                )
+            },
+            logger: pino({ level: "fatal" }),
+            printQRInTerminal: false,
+            browser: Browsers.macOS("Safari")
+        });
+
+        socket.ev.on("creds.update", saveCreds);
+
+        if (!socket.authState.creds.registered) {
+            await delay(1500);
+
+            const code =
+                await socket.requestPairingCode(number);
+
+            if (!res.headersSent) {
+                res.send({
+                    code
+                });
             }
+        }
 
-            MrNobodyWeb.ev.on("creds.update", saveCreds);
-
-            MrNobodyWeb.ev.on("connection.update", async (s) => {
-                const { connection, lastDisconnect } = s;
+        socket.ev.on(
+            "connection.update",
+            async (update) => {
+                const {
+                    connection,
+                    lastDisconnect
+                } = update;
 
                 if (connection === "open") {
                     try {
-                        await delay(5000); 
-                        const auth_path = path.join(sessionDir, "creds.json");
-                        
-                        if (!fs.existsSync(auth_path)) return;
-                        const credsData = fs.readFileSync(auth_path, "utf-8");
-
-                        const pasteResponse = await fetch("https://dpaste.com/api/v2/", {
-                            method: "POST",
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: new URLSearchParams({
-                                content: credsData,
-                                expiry_days: '365',
-                                syntax: 'json'
-                            }).toString()
-                        });
-
-                        const pasteUrl = await pasteResponse.text();
-                        const pasteId = pasteUrl.trim().split('/').filter(Boolean).pop();
-                        
-                        const string_session = "MrNobody~" + pasteId;
-                        const user_jid = jidNormalizedUser(MrNobodyWeb.user.id);
-
-                        // ඔයාගේ GitHub Photo එකේ ලින්ක් එක මෙතනට දාන්න
-                        const image_url = "https://raw.githubusercontent.com/MrUnknowner/mrnobody-pair/main/assets/logo.jpg"; 
-                        
-                        const msg_text = `*🖤 MRNOBODY MD SESSION 🖤*\n\n✨ *Session Successfully Generated!*\n\n⚠️ *SESSION ID:*\n\`${string_session}\`\n\n🛑 *NOTE:* Do not share this code with anyone.\n👨‍💻 *Developer:* Milshen Meghishnu\n*📱 Bot Name:* MrNobody MD`;
-
-                        await MrNobodyWeb.sendMessage(user_jid, { 
-                            image: { url: image_url }, 
-                            caption: msg_text 
-                        });
-                        await MrNobodyWeb.sendMessage(user_jid, { text: string_session });
-
-                        console.log("Session ID generated!");
-
-                        await delay(2000);
-                        removeFile(sessionDir);
-
-                    } catch (e) {
-                        console.error("Error:", e);
-                        removeFile(sessionDir);
-                    }
-                } 
-                else if (connection === "close") {
-                    let reason = lastDisconnect?.error?.output?.statusCode;
-                    if (reason !== 401) {
+                        /*
+                         * IMPORTANT:
+                         * Wait for the auth state to finish saving.
+                         */
                         await delay(5000);
-                        MrNobodyPair();
-                    } else {
-                        removeFile(sessionDir);
+
+                        /*
+                         * We keep the COMPLETE auth directory:
+                         *
+                         * creds.json
+                         * + signal key files
+                         * + other Baileys auth files
+                         */
+                        const files =
+                            fs.readdirSync(sessionDir);
+
+                        if (!files.length) {
+                            throw new Error(
+                                "Session files were not created"
+                            );
+                        }
+
+                        /*
+                         * For now we only confirm that the
+                         * complete session state exists.
+                         *
+                         * The next step will package/store this
+                         * directory securely for mrnobody-bot.
+                         */
+                        const generatedSession =
+                            createSessionId();
+
+                        console.log(
+                            "Full session state created:",
+                            generatedSession
+                        );
+
+                        /*
+                         * Send temporary confirmation.
+                         */
+                        const userJid =
+                            jidNormalizedUser(
+                                socket.user.id
+                            );
+
+                        const imageUrl =
+                            "https://raw.githubusercontent.com/MrUnknowner/mrnobody-pair/main/assets/logo.jpg";
+
+                        const message =
+`*🖤 MRNOBODY MD SESSION 🖤*
+
+✨ *Session Successfully Generated!*
+
+⚠️ *SESSION ID:*
+\`${generatedSession}\`
+
+🛑 *NOTE:* Do not share this code with anyone.
+
+👨‍💻 *Developer:* Milshen Meghishnu
+📱 *Bot Name:* MrNobody MD`;
+
+                        await socket.sendMessage(
+                            userJid,
+                            {
+                                image: {
+                                    url: imageUrl
+                                },
+                                caption: message
+                            }
+                        );
+
+                        await socket.sendMessage(
+                            userJid,
+                            {
+                                text: generatedSession
+                            }
+                        );
+
+                        console.log(
+                            "Session generated successfully."
+                        );
+
+                        /*
+                         * DO NOT delete the session yet.
+                         *
+                         * mrnobody-bot still needs the
+                         * complete auth state.
+                         */
+                    } catch (error) {
+                        console.error(
+                            "Session generation error:",
+                            error
+                        );
                     }
                 }
-            });
 
-        } catch (err) {
-            removeFile(sessionDir);
-            if (!res.headersSent) { res.send({ code: "Service Unavailable" }); }
+                if (connection === "close") {
+                    const reason =
+                        lastDisconnect?.error?.output
+                            ?.statusCode;
+
+                    if (
+                        reason ===
+                        DisconnectReason.loggedOut
+                    ) {
+                        console.log(
+                            "WhatsApp session logged out."
+                        );
+
+                        removeFile(sessionDir);
+                    } else {
+                        console.log(
+                            "Connection closed:",
+                            reason
+                        );
+                    }
+                }
+            }
+        );
+
+    } catch (error) {
+        console.error(
+            "Pairing error:",
+            error
+        );
+
+        removeFile(sessionDir);
+
+        if (!res.headersSent) {
+            res.status(503).send({
+                error: "Service Unavailable"
+            });
         }
     }
-    return await MrNobodyPair();
 });
 
 module.exports = router;
-                    
