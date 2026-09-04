@@ -9,11 +9,39 @@ if (!fs.existsSync(SESSIONS_DIR)) {
     });
 }
 
-function saveSession(sessionId, sourceDir) {
-    const destination = path.join(
+function normalizeSessionId(sessionId) {
+    if (!sessionId) {
+        throw new Error("Session ID is required");
+    }
+
+    const id = String(sessionId);
+
+    if (!/^MrNobody~[A-Za-z0-9_-]+$/.test(id)) {
+        throw new Error("Invalid session ID");
+    }
+
+    return id;
+}
+
+function getSessionPath(sessionId) {
+    const safeSessionId = normalizeSessionId(sessionId);
+
+    return path.join(
         SESSIONS_DIR,
-        sessionId
+        safeSessionId
     );
+}
+
+function saveSession(sessionId, sourceDir) {
+    if (!sourceDir) {
+        throw new Error("Source directory is required");
+    }
+
+    if (!fs.existsSync(sourceDir)) {
+        throw new Error("Source session directory does not exist");
+    }
+
+    const destination = getSessionPath(sessionId);
 
     fs.rmSync(destination, {
         recursive: true,
@@ -28,10 +56,7 @@ function saveSession(sessionId, sourceDir) {
 }
 
 function getSession(sessionId) {
-    const sessionPath = path.join(
-        SESSIONS_DIR,
-        sessionId
-    );
+    const sessionPath = getSessionPath(sessionId);
 
     if (!fs.existsSync(sessionPath)) {
         return null;
@@ -41,10 +66,7 @@ function getSession(sessionId) {
 }
 
 function deleteSession(sessionId) {
-    const sessionPath = path.join(
-        SESSIONS_DIR,
-        sessionId
-    );
+    const sessionPath = getSessionPath(sessionId);
 
     fs.rmSync(sessionPath, {
         recursive: true,
