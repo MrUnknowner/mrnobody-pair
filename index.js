@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 8000;
 
 let code = require("./pair");
 let qr = require("./qr");
+const { loadSession } = require("./session-store");
 
 require("events").EventEmitter.defaultMaxListeners = 500;
 
