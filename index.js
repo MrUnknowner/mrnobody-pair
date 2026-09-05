@@ -17,6 +17,22 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use("/code", code);
 app.use("/qr", qr);
+app.get("/session/:id", (req, res) => {
+    try {
+        const sessionId = req.params.id.replace(/^MrNobody~/, "");
+
+        res.json({
+            success: true,
+            sessionId
+        });
+
+    } catch (error) {
+        res.status(404).json({
+            success: false,
+            error: "Session not found"
+        });
+    }
+});
 
 // API එක වැඩද බලන්න සරල Message එකක්
 app.get("/", (req, res) => {
