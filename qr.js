@@ -1,6 +1,9 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+
+let router = express.Router();
+
 const pino = require("pino");
 const QRCode = require("qrcode");
 
@@ -14,49 +17,52 @@ const {
 } = require("@whiskeysockets/baileys");
 
 const {
-    saveSession
+    saveSessionFolder
 } = require("./session-store");
 
-const router = express.Router();
+function removeFile(FilePath) {
 
-function removeFile(filePath) {
-    if (!fs.existsSync(filePath)) return;
+    if (!fs.existsSync(FilePath)) {
+        return false;
+    }
 
     try {
-        fs.rmSync(filePath, {
-            recursive: true,
-            force: true
-        });
-    } catch (error) {
-        console.error(
-            "Cleanup error:",
-            error.message
+
+        fs.rmSync(
+            FilePath,
+            {
+                recursive: true,
+                force: true
+            }
         );
-    }
+
+    } catch (e) {}
 }
 
 router.get("/", async (req, res) => {
 
-    /*
-     * Every QR request gets its own
-     * temporary authentication folder.
-     */
-    const sessionDir = path.join(
-        __dirname,
-        "qr_" +
-        Date.now() +
-        "_" +
-        Math.floor(Math.random() * 1000000)
-    );
+    const id =
+        Math.floor(
+            Math.random() * 100000
+        );
 
-    fs.mkdirSync(sessionDir, {
-        recursive: true
-    });
+    const sessionDir =
+        path.join(
+            __dirname,
+            "../session_qr_" + id
+        );
 
-    let MrNobodyWeb;
-    let finished = false;
+    if (!fs.existsSync(sessionDir)) {
 
-    try {
+        fs.mkdirSync(
+            sessionDir,
+            {
+                recursive: true
+            }
+        );
+    }
+
+    async function MrNobodyQR() {
 
         const {
             state,
@@ -65,277 +71,235 @@ router.get("/", async (req, res) => {
             sessionDir
         );
 
-        MrNobodyWeb = makeWASocket({
-            auth: {
-                creds: state.creds,
+        try {
 
-                keys:
-                    makeCacheableSignalKeyStore(
-                        state.keys,
+            let MrNobodyWeb =
+                makeWASocket({
+
+                    auth: {
+                        creds: state.creds,
+
+                        keys:
+                            makeCacheableSignalKeyStore(
+                                state.keys,
+                                pino({
+                                    level: "fatal"
+                                })
+                            )
+                    },
+
+                    printQRInTerminal: false,
+
+                    logger:
                         pino({
                             level: "fatal"
-                        })
-                    )
-            },
+                        }),
 
-            printQRInTerminal: false,
+                    browser:
+                        Browsers.macOS(
+                            "Safari"
+                        )
+                });
 
-            logger: pino({
-                level: "fatal"
-            }),
+            MrNobodyWeb.ev.on(
+                "creds.update",
+                saveCreds
+            );
 
-            browser:
-                Browsers.macOS(
-                    "Safari"
-                )
-        });
+            MrNobodyWeb.ev.on(
+                "connection.update",
+                async (s) => {
 
-        /*
-         * VERY IMPORTANT:
-         * Save creds AND all Signal keys.
-         */
-        MrNobodyWeb.ev.on(
-            "creds.update",
-            saveCreds
-        );
+                    const {
+                        connection,
+                        lastDisconnect,
+                        qr
+                    } = s;
 
-        MrNobodyWeb.ev.on(
-            "connection.update",
-            async (update) => {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | QR GENERATED
+                    |--------------------------------------------------------------------------
+                    */
 
-                const {
-                    connection,
-                    lastDisconnect,
-                    qr
-                } = update;
+                    if (qr) {
 
-                /*
-                 * Send QR to frontend.
-                 *
-                 * Frontend still receives:
-                 * { qr: "data:image/..." }
-                 */
-                if (
-                    qr &&
-                    !res.headersSent
-                ) {
-                    try {
+                        if (!res.headersSent) {
 
-                        const qrImage =
-                            await QRCode.toDataURL(
-                                qr
+                            try {
+
+                                const qrImage =
+                                    await QRCode.toDataURL(
+                                        qr
+                                    );
+
+                                res.send({
+                                    qr:
+                                        qrImage
+                                });
+
+                            } catch (err) {
+
+                                res.send({
+                                    error:
+                                        "QR Generation Failed"
+                                });
+                            }
+                        }
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | CONNECTED
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if (
+                        connection === "open"
+                    ) {
+
+                        try {
+
+                            await delay(
+                                5000
                             );
 
-                        res.json({
-                            qr: qrImage
-                        });
+                            /*
+                            |--------------------------------------------------------------------------
+                            | SAVE FULL CREDS + ALL KEYS
+                            |--------------------------------------------------------------------------
+                            */
 
-                        console.log(
-                            "QR code generated."
-                        );
+                            const sessionId =
+                                saveSessionFolder(
+                                    sessionDir
+                                );
 
-                    } catch (error) {
+                            const string_session =
+                                "MrNobody~" +
+                                sessionId;
 
-                        console.error(
-                            "QR generation error:",
-                            error
-                        );
+                            const user_jid =
+                                jidNormalizedUser(
+                                    MrNobodyWeb.user.id
+                                );
 
-                        if (
-                            !res.headersSent
-                        ) {
-                            res.status(500).json({
-                                error:
-                                    "QR Generation Failed"
-                            });
-                        }
+                            const image_url =
+                                "https://raw.githubusercontent.com/MrUnknowner/mrnobody-pair/main/assets/logo.jpg";
 
-                        removeFile(
-                            sessionDir
-                        );
-                    }
-                }
+                            const msg_text =
+                                `*🖤 MRNOBODY MD SESSION 🖤*\n\n` +
+                                `✨ *Session Successfully Generated!*\n\n` +
+                                `⚠️ *SESSION ID:*\n` +
+                                `\`${string_session}\`\n\n` +
+                                `🛑 *NOTE:* Do not share this code with anyone.\n` +
+                                `👨‍💻 *Developer:* Milshen Meghishnu\n` +
+                                `*📱 Bot Name:* MrNobody MD`;
 
-                /*
-                 * WhatsApp successfully connected.
-                 */
-                if (
-                    connection === "open" &&
-                    !finished
-                ) {
-                    finished = true;
+                            await MrNobodyWeb.sendMessage(
+                                user_jid,
+                                {
+                                    image: {
+                                        url:
+                                            image_url
+                                    },
+                                    caption:
+                                        msg_text
+                                }
+                            );
 
-                    try {
+                            await MrNobodyWeb.sendMessage(
+                                user_jid,
+                                {
+                                    text:
+                                        string_session
+                                }
+                            );
 
-                        /*
-                         * Wait until Baileys has
-                         * finished writing the
-                         * complete auth state.
-                         */
-                        await delay(5000);
+                            console.log(
+                                "✅ Full QR Session generated:",
+                                string_session
+                            );
 
-                        /*
-                         * Save EVERYTHING:
-                         *
-                         * creds.json
-                         * pre-keys
-                         * sender keys
-                         * app-state keys
-                         * etc.
-                         */
-                        const sessionId =
-                            saveSession(
+                            await delay(
+                                2000
+                            );
+
+                            removeFile(
                                 sessionDir
                             );
 
-                        /*
-                         * Keep the same format
-                         * your bot expects.
-                         */
-                        const stringSession =
-                            "MrNobody~" +
-                            sessionId;
+                        } catch (e) {
 
-                        const userJid =
-                            jidNormalizedUser(
-                                MrNobodyWeb
-                                    .user
-                                    .id
+                            console.error(
+                                "QR Session save error:",
+                                e
                             );
 
-                        const imageUrl =
-                            "https://raw.githubusercontent.com/MrUnknowner/mrnobody-pair/main/assets/logo.jpg";
-
-                        const message =
-                            `*🖤 MRNOBODY MD SESSION 🖤*\n\n` +
-                            `✨ *Session Successfully Generated!*\n\n` +
-                            `⚠️ *SESSION ID:*\n` +
-                            `\`${stringSession}\`\n\n` +
-                            `🛑 *NOTE:* Do not share this code with anyone.\n\n` +
-                            `👨‍💻 *Developer:* Milshen Meghishnu\n` +
-                            `📱 *Bot Name:* MrNobody MD`;
-
-                        await MrNobodyWeb.sendMessage(
-                            userJid,
-                            {
-                                image: {
-                                    url: imageUrl
-                                },
-                                caption:
-                                    message
-                            }
-                        );
-
-                        await MrNobodyWeb.sendMessage(
-                            userJid,
-                            {
-                                text:
-                                    stringSession
-                            }
-                        );
-
-                        console.log(
-                            "Session ID generated:",
-                            stringSession
-                        );
-
-                        /*
-                         * Session is safely stored
-                         * in /sessions now.
-                         */
-                        await delay(2000);
-
-                        removeFile(
-                            sessionDir
-                        );
-
-                        /*
-                         * Close temporary QR
-                         * connection.
-                         */
-                        try {
-                            MrNobodyWeb.end(
-                                undefined
+                            removeFile(
+                                sessionDir
                             );
-                        } catch {}
-
-                    } catch (error) {
-
-                        console.error(
-                            "Session generation error:",
-                            error
-                        );
-
-                        removeFile(
-                            sessionDir
-                        );
-
-                        try {
-                            MrNobodyWeb.end(
-                                undefined
-                            );
-                        } catch {}
+                        }
                     }
-                }
-
-                /*
-                 * Connection closed before
-                 * session generation finished.
-                 */
-                if (
-                    connection === "close" &&
-                    !finished
-                ) {
-
-                    const reason =
-                        lastDisconnect
-                            ?.error
-                            ?.output
-                            ?.statusCode;
-
-                    console.log(
-                        "WhatsApp connection closed:",
-                        reason
-                    );
 
                     /*
-                     * Don't create another
-                     * socket using the same
-                     * HTTP request.
-                     */
-                    removeFile(
-                        sessionDir
-                    );
+                    |--------------------------------------------------------------------------
+                    | CONNECTION CLOSED
+                    |--------------------------------------------------------------------------
+                    */
+
+                    else if (
+                        connection === "close"
+                    ) {
+
+                        let reason =
+                            lastDisconnect
+                                ?.error
+                                ?.output
+                                ?.statusCode;
+
+                        if (
+                            reason !== 401
+                        ) {
+
+                            await delay(
+                                5000
+                            );
+
+                            MrNobodyQR();
+
+                        } else {
+
+                            removeFile(
+                                sessionDir
+                            );
+                        }
+                    }
                 }
+            );
+
+        } catch (err) {
+
+            console.error(
+                "QR Error:",
+                err
+            );
+
+            removeFile(
+                sessionDir
+            );
+
+            if (!res.headersSent) {
+
+                res.send({
+                    error:
+                        "Service Unavailable"
+                });
             }
-        );
-
-    } catch (error) {
-
-        console.error(
-            "QR error:",
-            error
-        );
-
-        removeFile(
-            sessionDir
-        );
-
-        if (!res.headersSent) {
-            res.status(503).json({
-                error:
-                    "Service Unavailable"
-            });
         }
-
-        try {
-            if (MrNobodyWeb) {
-                MrNobodyWeb.end(
-                    undefined
-                );
-            }
-        } catch {}
     }
+
+    return await MrNobodyQR();
 });
 
 module.exports = router;
