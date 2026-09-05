@@ -27,10 +27,7 @@ function removeFile(filePath) {
             force: true
         });
     } catch (error) {
-        console.error(
-            "Cleanup error:",
-            error.message
-        );
+        console.error("Cleanup error:", error.message);
     }
 }
 
@@ -51,10 +48,6 @@ router.get("/", async (req, res) => {
         });
     }
 
-    /*
-     * Every pairing request gets its own
-     * temporary auth directory.
-     */
     const sessionDir = path.join(
         __dirname,
         "pair_" +
@@ -69,26 +62,23 @@ router.get("/", async (req, res) => {
 
     let MrNobodyWeb;
     let finished = false;
+    let pairingRequested = false;
 
     try {
         const {
             state,
             saveCreds
-        } = await useMultiFileAuthState(
-            sessionDir
-        );
+        } = await useMultiFileAuthState(sessionDir);
 
         MrNobodyWeb = makeWASocket({
             auth: {
                 creds: state.creds,
-
-                keys:
-                    makeCacheableSignalKeyStore(
-                        state.keys,
-                        pino({
-                            level: "fatal"
-                        })
-                    )
+                keys: makeCacheableSignalKeyStore(
+                    state.keys,
+                    pino({
+                        level: "fatal"
+                    })
+                )
             },
 
             printQRInTerminal: false,
@@ -97,77 +87,14 @@ router.get("/", async (req, res) => {
                 level: "fatal"
             }),
 
-            browser:
-                Browsers.macOS(
-                    "Safari"
-                )
+            browser: Browsers.macOS("Safari")
         });
 
-        /*
-         * VERY IMPORTANT:
-         * Always save BOTH creds and keys.
-         */
         MrNobodyWeb.ev.on(
             "creds.update",
             saveCreds
         );
 
-        /*
-         * Pair Code login.
-         *
-         * Use state.creds.registered,
-         * NOT MrNobodyWeb.authState.creds.registered.
-         */
-        if (!state.creds.registered) {
-            await delay(1500);
-
-            try {
-                const code =
-                    await MrNobodyWeb.requestPairingCode(
-                        num
-                    );
-
-                /*
-                 * Frontend expects exactly:
-                 * { code: "XXXX-XXXX" }
-                 */
-                if (!res.headersSent) {
-                    res.json({
-                        code
-                    });
-                }
-
-                console.log(
-                    "Pairing code generated."
-                );
-            } catch (error) {
-                console.error(
-                    "Pairing code error:",
-                    error
-                );
-
-                if (!res.headersSent) {
-                    res.status(500).json({
-                        error:
-                            "Failed to generate pairing code"
-                    });
-                }
-
-                removeFile(sessionDir);
-
-                try {
-                    MrNobodyWeb.end(
-                        undefined
-                    );
-                } catch {}
-
-                return;
-            }
-        }
-
-        /*
-         * WhatsApp connection events.
-         */
         MrNobodyWeb.ev.on(
             "connection.update",
             async (update) => {
@@ -175,6 +102,59 @@ router.get("/", async (req, res) => {
                     connection,
                     lastDisconnect
                 } = update;
+
+                /*
+                 * Request pairing code only after
+                 * the WhatsApp socket is ready.
+                 */
+                if (
+                    connection === "connecting" &&
+                    !state.creds.registered &&
+                    !pairingRequested
+                ) {
+                    pairingRequested = true;
+
+                    try {
+                        await delay(1000);
+
+                        const code =
+                            await MrNobodyWeb.requestPairingCode(
+                                num
+                            );
+
+                        if (!res.headersSent) {
+                            res.json({
+                                code
+                            });
+                        }
+
+                        console.log(
+                            "Pairing code generated:",
+                            code
+                        );
+
+                    } catch (error) {
+                        console.error(
+                            "Pairing code error:",
+                            error
+                        );
+
+                        if (!res.headersSent) {
+                            res.status(500).json({
+                                error:
+                                    "Failed to generate pairing code"
+                            });
+                        }
+
+                        removeFile(sessionDir);
+
+                        try {
+                            MrNobodyWeb.end(
+                                undefined
+                            );
+                        } catch {}
+                    }
+                }
 
                 /*
                  * Successfully connected.
@@ -187,15 +167,14 @@ router.get("/", async (req, res) => {
 
                     try {
                         /*
-                         * Give Baileys enough time to
-                         * write all creds + keys.
+                         * Allow all authentication files
+                         * to finish writing.
                          */
                         await delay(5000);
 
                         /*
-                         * IMPORTANT:
-                         * Save the COMPLETE auth state,
-                         * not only creds.json.
+                         * Save the COMPLETE Baileys
+                         * authentication state.
                          */
                         const sessionId =
                             saveSession(
@@ -208,9 +187,7 @@ router.get("/", async (req, res) => {
 
                         const userJid =
                             jidNormalizedUser(
-                                MrNobodyWeb
-                                    .user
-                                    .id
+                                MrNobodyWeb.user.id
                             );
 
                         const imageUrl =
@@ -249,28 +226,18 @@ router.get("/", async (req, res) => {
                             stringSession
                         );
 
-                        /*
-                         * The complete session is now
-                         * stored inside /sessions.
-                         *
-                         * Temporary pairing files
-                         * can now be removed.
-                         */
                         await delay(2000);
 
                         removeFile(
                             sessionDir
                         );
 
-                        /*
-                         * Close temporary pairing
-                         * connection.
-                         */
                         try {
                             MrNobodyWeb.end(
                                 undefined
                             );
                         } catch {}
+
                     } catch (error) {
                         console.error(
                             "Session generation error:",
@@ -290,8 +257,8 @@ router.get("/", async (req, res) => {
                 }
 
                 /*
-                 * Connection closed before session
-                 * generation finished.
+                 * Connection closed before login
+                 * completed.
                  */
                 if (
                     connection === "close" &&
@@ -308,28 +275,20 @@ router.get("/", async (req, res) => {
                         reason
                     );
 
-                    /*
-                     * Do NOT create another socket
-                     * using the same HTTP request.
-                     *
-                     * That was causing duplicate/
-                     * unstable connections.
-                     */
                     removeFile(
                         sessionDir
                     );
                 }
             }
         );
+
     } catch (error) {
         console.error(
             "Pairing error:",
             error
         );
 
-        removeFile(
-            sessionDir
-        );
+        removeFile(sessionDir);
 
         if (!res.headersSent) {
             res.status(503).json({
