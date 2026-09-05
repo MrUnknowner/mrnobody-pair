@@ -2,64 +2,135 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const bodyParser = require("body-parser");
+
+const {
+    loadSession,
+    updateSession,
+    validSessionId
+} = require("./session-store");
+
 const PORT = process.env.PORT || 8000;
 
 let code = require("./pair");
 let qr = require("./qr");
-const { loadSession } = require("./session-store");
 
 require("events").EventEmitter.defaultMaxListeners = 500;
 
-// වෙනත් Website එකකින් මේ API එකට Call කරන්න දෙන අවසරය (CORS)
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use(bodyParser.json({
+    limit: "10mb"
+}));
+
+app.use(bodyParser.urlencoded({
+    extended: true
+}));
 
 app.use("/code", code);
 app.use("/qr", qr);
+
+/*
+|--------------------------------------------------------------------------
+| GET SESSION
+|--------------------------------------------------------------------------
+| Bot එක SESSION_ID එකෙන් full creds + keys ගන්න මෙතනට එනවා.
+*/
+
 app.get("/session/:id", (req, res) => {
     try {
-        const sessionId = req.params.id.replace(/^MrNobody~/, "");
+        const id = req.params.id;
 
-        const sessionFile = require("path").join(
-            __dirname,
-            "sessions",
-            `${sessionId}.json`
-        );
+        if (!validSessionId(id)) {
+            return res.status(400).json({
+                error: "Invalid session ID"
+            });
+        }
 
-        if (!require("fs").existsSync(sessionFile)) {
+        const session = loadSession(id);
+
+        if (!session) {
             return res.status(404).json({
-                success: false,
                 error: "Session not found"
             });
         }
 
-        const sessionData = require("fs").readFileSync(
-            sessionFile,
-            "utf8"
-        );
-
-        res.json({
-            success: true,
-            session: JSON.parse(sessionData)
-        });
+        return res.json(session);
 
     } catch (error) {
-        console.error("Session load error:", error);
+        console.error(
+            "GET SESSION ERROR:",
+            error
+        );
 
-        res.status(404).json({
-            success: false,
-            error: "Session not found"
+        return res.status(500).json({
+            error: "Failed to load session"
         });
     }
 });
-// API එක වැඩද බලන්න සරල Message එකක්
+
+/*
+|--------------------------------------------------------------------------
+| UPDATE SESSION
+|--------------------------------------------------------------------------
+| Bot එක running වෙද්දී Signal keys වෙනස් වෙනවා.
+| ඒ updates backend එකට ආපහු save කරනවා.
+*/
+
+app.put("/session/:id", (req, res) => {
+    try {
+        const id = req.params.id;
+
+        if (!validSessionId(id)) {
+            return res.status(400).json({
+                error: "Invalid session ID"
+            });
+        }
+
+        const files = req.body?.files;
+
+        if (!files || typeof files !== "object") {
+            return res.status(400).json({
+                error: "Invalid session data"
+            });
+        }
+
+        updateSession(
+            id,
+            files
+        );
+
+        return res.json({
+            success: true
+        });
+
+    } catch (error) {
+        console.error(
+            "UPDATE SESSION ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            error: "Failed to update session"
+        });
+    }
+});
+
+/*
+|--------------------------------------------------------------------------
+| HEALTH CHECK
+|--------------------------------------------------------------------------
+*/
+
 app.get("/", (req, res) => {
-  res.send("MRNOBODY MD API is successfully running!");
+    res.send(
+        "MRNOBODY MD API is successfully running!"
+    );
 });
 
 app.listen(PORT, () => {
-  console.log(`⏩ Server running on port ` + PORT);
+    console.log(
+        `⏩ Server running on port ${PORT}`
+    );
 });
 
 module.exports = app;
