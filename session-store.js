@@ -8,122 +8,198 @@ if (!fs.existsSync(SESSIONS_DIR)) {
     fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
-function createSessionId() {
-    return crypto.randomBytes(8).toString("base64url");
+function validSessionId(id) {
+    return typeof id === "string" && /^[A-Za-z0-9_-]{6,40}$/.test(id);
 }
 
-function saveSession(authDir) {
-    const sessionId = createSessionId();
-    const sessionFile = path.join(
-        SESSIONS_DIR,
-        `${sessionId}.json`
-    );
+function getSessionFile(id) {
+    if (!validSessionId(id)) {
+        throw new Error("Invalid session ID");
+    }
 
-    const files = [];
+    return path.join(SESSIONS_DIR, `${id}.json`);
+}
 
-    function readDirectory(directory, relativePath = "") {
-        const entries = fs.readdirSync(directory, {
-            withFileTypes: true
-        });
+function collectFiles(dir, baseDir = dir) {
+    const result = {};
 
-        for (const entry of entries) {
-            const fullPath = path.join(
-                directory,
-                entry.name
+    if (!fs.existsSync(dir)) {
+        return result;
+    }
+
+    const entries = fs.readdirSync(dir, {
+        withFileTypes: true
+    });
+
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const relativePath = path.relative(baseDir, fullPath);
+
+        if (entry.isDirectory()) {
+            Object.assign(
+                result,
+                collectFiles(fullPath, baseDir)
             );
+        } else if (entry.isFile()) {
+            const content = fs.readFileSync(fullPath);
 
-            const filePath = path.join(
-                relativePath,
-                entry.name
-            );
-
-            if (entry.isDirectory()) {
-                readDirectory(
-                    fullPath,
-                    filePath
-                );
-            } else {
-                files.push({
-                    path: filePath.replace(/\\/g, "/"),
-                    data: fs
-                        .readFileSync(fullPath)
-                        .toString("base64")
-                });
-            }
+            result[relativePath] = content.toString("base64");
         }
     }
 
-    readDirectory(authDir);
+    return result;
+}
+
+function writeFiles(dir, files) {
+    if (!files || typeof files !== "object") {
+        throw new Error("Invalid session files");
+    }
+
+    fs.mkdirSync(dir, {
+        recursive: true
+    });
+
+    for (const [relativePath, base64Data] of Object.entries(files)) {
+        if (
+            typeof relativePath !== "string" ||
+            typeof base64Data !== "string"
+        ) {
+            continue;
+        }
+
+        const cleanPath = path.normalize(relativePath);
+
+        if (
+            cleanPath.startsWith("..") ||
+            path.isAbsolute(cleanPath)
+        ) {
+            continue;
+        }
+
+        const filePath = path.join(dir, cleanPath);
+
+        fs.mkdirSync(path.dirname(filePath), {
+            recursive: true
+        });
+
+        fs.writeFileSync(
+            filePath,
+            Buffer.from(base64Data, "base64")
+        );
+    }
+}
+
+function createSessionId() {
+    return crypto
+        .randomBytes(6)
+        .toString("base64url")
+        .replace(/[^A-Za-z0-9]/g, "")
+        .slice(0, 10);
+}
+
+function saveSessionFolder(sessionDir, existingId = null) {
+    if (!fs.existsSync(sessionDir)) {
+        throw new Error("Session folder does not exist");
+    }
+
+    const files = collectFiles(sessionDir);
+
+    if (!files["creds.json"]) {
+        throw new Error("creds.json not found");
+    }
+
+    const sessionId =
+        existingId && validSessionId(existingId)
+            ? existingId
+            : createSessionId();
+
+    const data = {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        files
+    };
+
+    const filePath = getSessionFile(sessionId);
+    const tempPath = `${filePath}.tmp`;
 
     fs.writeFileSync(
-        sessionFile,
-        JSON.stringify({
-            version: 1,
-            files
-        }),
-        {
-            encoding: "utf8",
-            mode: 0o600
-        }
+        tempPath,
+        JSON.stringify(data)
+    );
+
+    fs.renameSync(tempPath, filePath);
+
+    console.log(
+        `✅ Full session saved: ${sessionId}`
     );
 
     return sessionId;
 }
 
-function loadSession(sessionId, destination) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
-        throw new Error("Invalid session ID");
+function loadSession(sessionId) {
+    const filePath = getSessionFile(sessionId);
+
+    if (!fs.existsSync(filePath)) {
+        return null;
     }
 
-    const sessionFile = path.join(
-        SESSIONS_DIR,
-        `${sessionId}.json`
+    const raw = fs.readFileSync(
+        filePath,
+        "utf8"
     );
 
-    if (!fs.existsSync(sessionFile)) {
+    return JSON.parse(raw);
+}
+
+function restoreSession(sessionId, destination) {
+    const session = loadSession(sessionId);
+
+    if (!session) {
         throw new Error("Session not found");
     }
 
-    const session = JSON.parse(
-        fs.readFileSync(sessionFile, "utf8")
+    writeFiles(
+        destination,
+        session.files
     );
 
-    fs.mkdirSync(destination, {
-        recursive: true
-    });
+    return true;
+}
 
-    for (const file of session.files) {
-        const output = path.resolve(
-            destination,
-            file.path
-        );
+function updateSession(sessionId, files) {
+    const existing = loadSession(sessionId);
 
-        const root = path.resolve(
-            destination
-        );
-
-        if (!output.startsWith(root + path.sep)) {
-            throw new Error("Invalid session path");
-        }
-
-        fs.mkdirSync(
-            path.dirname(output),
-            {
-                recursive: true
-            }
-        );
-
-        fs.writeFileSync(
-            output,
-            Buffer.from(file.data, "base64"),
-            {
-                mode: 0o600
-            }
-        );
+    if (!existing) {
+        throw new Error("Session not found");
     }
+
+    const data = {
+        ...existing,
+        updatedAt: new Date().toISOString(),
+        files
+    };
+
+    const filePath = getSessionFile(sessionId);
+    const tempPath = `${filePath}.tmp`;
+
+    fs.writeFileSync(
+        tempPath,
+        JSON.stringify(data)
+    );
+
+    fs.renameSync(
+        tempPath,
+        filePath
+    );
+
+    return true;
 }
 
 module.exports = {
-    saveSession,
-    loadSession
+    saveSessionFolder,
+    loadSession,
+    restoreSession,
+    updateSession,
+    collectFiles,
+    validSessionId
 };
