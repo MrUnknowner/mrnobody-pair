@@ -21,19 +21,38 @@ app.get("/session/:id", (req, res) => {
     try {
         const sessionId = req.params.id.replace(/^MrNobody~/, "");
 
+        const sessionFile = require("path").join(
+            __dirname,
+            "sessions",
+            `${sessionId}.json`
+        );
+
+        if (!require("fs").existsSync(sessionFile)) {
+            return res.status(404).json({
+                success: false,
+                error: "Session not found"
+            });
+        }
+
+        const sessionData = require("fs").readFileSync(
+            sessionFile,
+            "utf8"
+        );
+
         res.json({
             success: true,
-            sessionId
+            session: JSON.parse(sessionData)
         });
 
     } catch (error) {
+        console.error("Session load error:", error);
+
         res.status(404).json({
             success: false,
             error: "Session not found"
         });
     }
 });
-
 // API එක වැඩද බලන්න සරල Message එකක්
 app.get("/", (req, res) => {
   res.send("MRNOBODY MD API is successfully running!");
