@@ -1,81 +1,129 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const SESSIONS_DIR = path.join(__dirname, "sessions");
 
 if (!fs.existsSync(SESSIONS_DIR)) {
-    fs.mkdirSync(SESSIONS_DIR, {
-        recursive: true
-    });
+    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
-function normalizeSessionId(sessionId) {
-    if (!sessionId) {
-        throw new Error("Session ID is required");
+function createSessionId() {
+    return crypto.randomBytes(8).toString("base64url");
+}
+
+function saveSession(authDir) {
+    const sessionId = createSessionId();
+    const sessionFile = path.join(
+        SESSIONS_DIR,
+        `${sessionId}.json`
+    );
+
+    const files = [];
+
+    function readDirectory(directory, relativePath = "") {
+        const entries = fs.readdirSync(directory, {
+            withFileTypes: true
+        });
+
+        for (const entry of entries) {
+            const fullPath = path.join(
+                directory,
+                entry.name
+            );
+
+            const filePath = path.join(
+                relativePath,
+                entry.name
+            );
+
+            if (entry.isDirectory()) {
+                readDirectory(
+                    fullPath,
+                    filePath
+                );
+            } else {
+                files.push({
+                    path: filePath.replace(/\\/g, "/"),
+                    data: fs
+                        .readFileSync(fullPath)
+                        .toString("base64")
+                });
+            }
+        }
     }
 
-    const id = String(sessionId);
+    readDirectory(authDir);
 
-    if (!/^MrNobody~[A-Za-z0-9_-]+$/.test(id)) {
+    fs.writeFileSync(
+        sessionFile,
+        JSON.stringify({
+            version: 1,
+            files
+        }),
+        {
+            encoding: "utf8",
+            mode: 0o600
+        }
+    );
+
+    return sessionId;
+}
+
+function loadSession(sessionId, destination) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) {
         throw new Error("Invalid session ID");
     }
 
-    return id;
-}
-
-function getSessionPath(sessionId) {
-    const safeSessionId = normalizeSessionId(sessionId);
-
-    return path.join(
+    const sessionFile = path.join(
         SESSIONS_DIR,
-        safeSessionId
+        `${sessionId}.json`
     );
-}
 
-function saveSession(sessionId, sourceDir) {
-    if (!sourceDir) {
-        throw new Error("Source directory is required");
+    if (!fs.existsSync(sessionFile)) {
+        throw new Error("Session not found");
     }
 
-    if (!fs.existsSync(sourceDir)) {
-        throw new Error("Source session directory does not exist");
-    }
+    const session = JSON.parse(
+        fs.readFileSync(sessionFile, "utf8")
+    );
 
-    const destination = getSessionPath(sessionId);
-
-    fs.rmSync(destination, {
-        recursive: true,
-        force: true
-    });
-
-    fs.cpSync(sourceDir, destination, {
+    fs.mkdirSync(destination, {
         recursive: true
     });
 
-    return destination;
-}
+    for (const file of session.files) {
+        const output = path.resolve(
+            destination,
+            file.path
+        );
 
-function getSession(sessionId) {
-    const sessionPath = getSessionPath(sessionId);
+        const root = path.resolve(
+            destination
+        );
 
-    if (!fs.existsSync(sessionPath)) {
-        return null;
+        if (!output.startsWith(root + path.sep)) {
+            throw new Error("Invalid session path");
+        }
+
+        fs.mkdirSync(
+            path.dirname(output),
+            {
+                recursive: true
+            }
+        );
+
+        fs.writeFileSync(
+            output,
+            Buffer.from(file.data, "base64"),
+            {
+                mode: 0o600
+            }
+        );
     }
-
-    return sessionPath;
-}
-
-function deleteSession(sessionId) {
-    const sessionPath = getSessionPath(sessionId);
-
-    fs.rmSync(sessionPath, {
-        recursive: true,
-        force: true
-    });
 }
 
 module.exports = {
     saveSession,
-    getSession,
-    deleteSession
+    loadSession
 };
